@@ -1,0 +1,14 @@
+[project]
+name = "deepagent-cli-glm-example"
+version = "0.1.0"
+description = "Minimal DeepAgents CLI example with GLM/OpenAI-compatible model and stream_events(version='v3')."
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.6.0",
+    "langchain>=1.3.2",
+    "langchain-openai>=1.0.1",
+    "python-dotenv>=1.2.2",
+]
+
+[tool.uv]
+package = false

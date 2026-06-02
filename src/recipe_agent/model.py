@@ -35,10 +35,115 @@ def _get(prefix: str, key: str) -> str:
     return _DEFAULTS[key]
 
 
+def _extract_reasoning_details_text(reasoning_details: Any) -> str:
+    """Extract concatenable text from OpenRouter/GLM reasoning_details payloads."""
+
+    if isinstance(reasoning_details, str):
+        return reasoning_details
+
+    if isinstance(reasoning_details, list):
+        return "".join(
+            _extract_reasoning_details_text(item) for item in reasoning_details
+        )
+
+    if not isinstance(reasoning_details, dict):
+        return ""
+
+    text_parts: list[str] = []
+    for key in (
+        "reasoning_content",
+        "reasoning",
+        "thinking",
+        "text",
+        "content",
+        "summary",
+    ):
+        value = reasoning_details.get(key)
+        if isinstance(value, str):
+            text_parts.append(value)
+        elif isinstance(value, list | dict):
+            text_parts.append(_extract_reasoning_details_text(value))
+
+    return "".join(text_parts)
+
+
+def _get_reasoning_content(delta: dict[str, Any]) -> str:
+    """Return textual reasoning from known OpenAI-compatible streaming delta fields."""
+
+    reasoning_parts: list[str] = []
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        value = delta.get(key)
+        if isinstance(value, str):
+            reasoning_parts.append(value)
+        elif isinstance(value, dict):
+            reasoning_parts.append(_extract_reasoning_details_text(value))
+
+    details_text = _extract_reasoning_details_text(delta.get("reasoning_details"))
+    if details_text and details_text not in reasoning_parts:
+        reasoning_parts.append(details_text)
+
+    return "".join(reasoning_parts)
+
+
+def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
+    choices = raw_chunk.get("choices") or raw_chunk.get("chunk", {}).get("choices") or []
+    reasoning_parts: list[str] = []
+
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+
+        delta = choice.get("delta") or choice.get("message") or {}
+        if not isinstance(delta, dict):
+            continue
+
+        reasoning = _get_reasoning_content(delta)
+        if reasoning:
+            reasoning_parts.append(reasoning)
+
+    return "".join(reasoning_parts)
+
+
+def _append_reasoning_content(message: AIMessageChunk, reasoning_content: str) -> None:
+    existing = message.additional_kwargs.get("reasoning_content")
+    if isinstance(existing, str):
+        reasoning_content = existing + reasoning_content
+
+    message.additional_kwargs["reasoning_content"] = reasoning_content
+    message.additional_kwargs["reasoning"] = reasoning_content
+
+    reasoning_block = {
+        "type": "reasoning",
+        "reasoning": reasoning_content,
+    }
+    if isinstance(message.content, str):
+        if message.content:
+            message.content = [
+                {"type": "text", "text": message.content},
+                reasoning_block,
+            ]
+        else:
+            message.content = [reasoning_block]
+    elif isinstance(message.content, list):
+        message.content = [*message.content, reasoning_block]
+    else:
+        message.content = [reasoning_block]
+
+    message.response_metadata.pop("model_provider", None)
+
+
 class ReasoningChatOpenAI(ChatOpenAI):
+    """
+    ChatOpenAI variant that preserves OpenRouter/GLM-style reasoning chunks.
+
+    The raw reasoning delta is written both to LangChain's message.content reasoning
+    block, so stream_events v3 can project it as item.reasoning, and to
+    additional_kwargs for callers that inspect the raw chunk metadata.
+    """
+
     def _convert_chunk_to_generation_chunk(
         self,
-        chunk: dict,
+        chunk: dict[str, Any],
         default_chunk_class: type,
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
@@ -51,27 +156,9 @@ class ReasoningChatOpenAI(ChatOpenAI):
         if gen is None:
             return None
 
-        choices = chunk.get("choices") or chunk.get("chunk", {}).get("choices") or []
-        if not choices:
-            return gen
-
-        delta = choices[0].get("delta") or {}
-
-        reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
-
-        if reasoning and isinstance(gen.message, AIMessageChunk):
-            # 이게 핵심.
-            # additional_kwargs가 아니라 content block으로 넣어야
-            # stream_events v3의 item.reasoning projection에 잡힌다.
-            gen.message.content = [
-                {
-                    "type": "reasoning",
-                    "reasoning": reasoning,
-                }
-            ]
-
-            # 필요하면 디버깅/후처리용으로도 보존
-            gen.message.additional_kwargs["reasoning"] = reasoning
+        reasoning_content = _extract_reasoning_delta(chunk)
+        if reasoning_content and isinstance(gen.message, AIMessageChunk):
+            _append_reasoning_content(gen.message, reasoning_content)
 
         return gen
 

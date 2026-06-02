@@ -50,6 +50,18 @@ def _extract_text_from_reasoning_details(details: Any) -> str:
     return "".join(parts)
 
 
+def _extract_direct_reasoning_delta(delta: dict[str, Any]) -> str:
+    for key in ("reasoning", "reasoning_content", "thinking"):
+        value = delta.get(key)
+        if isinstance(value, str) and value:
+            return value
+        if isinstance(value, dict):
+            text = _extract_text_from_reasoning_details([value])
+            if text:
+                return text
+    return ""
+
+
 def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
     choices = raw_chunk.get("choices") or raw_chunk.get("chunk", {}).get("choices") or []
     parts: list[str] = []
@@ -62,23 +74,12 @@ def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
         if not isinstance(delta, dict):
             continue
 
-        direct_parts: list[str] = []
-        for key in ("reasoning_content", "reasoning", "thinking"):
-            value = delta.get(key)
-            if isinstance(value, str) and value:
-                direct_parts.append(value)
-            elif isinstance(value, dict):
-                direct_parts.append(_extract_text_from_reasoning_details([value]))
-
-        direct_text = "".join(direct_parts)
-        details_text = _extract_text_from_reasoning_details(delta.get("reasoning_details"))
-
+        direct_text = _extract_direct_reasoning_delta(delta)
         if direct_text:
             parts.append(direct_text)
-            if details_text and details_text != direct_text:
-                parts.append(details_text)
-        else:
-            parts.append(details_text)
+            continue
+
+        parts.append(_extract_text_from_reasoning_details(delta.get("reasoning_details")))
 
     return "".join(parts)
 
@@ -103,7 +104,7 @@ class ReasoningChatOpenAI(ChatOpenAI):
         message = generation_chunk.message
         reasoning = _extract_reasoning_delta(chunk)
         if reasoning and isinstance(message, AIMessageChunk):
-            message.additional_kwargs["reasoning_content"] = reasoning
+            message.additional_kwargs["reasoning"] = reasoning
             message.response_metadata.pop("model_provider", None)
 
         return generation_chunk

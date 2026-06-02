@@ -21,7 +21,7 @@ uv sync
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -U deepagents langchain langchain-openai python-dotenv
+pip install -U deepagents langchain langchain-openai python-dotenv rich arize-phoenix-otel openinference-instrumentation-langchain
 ```
 
 ## 2. 모델 설정
@@ -41,7 +41,13 @@ SUPERVISOR_API_KEY=
 TOOL_MODEL=
 TOOL_BASE_URL=
 TOOL_API_KEY=
+
+# 선택: Phoenix/OpenInference observability
+# PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
+# PHOENIX_PROJECT_NAME=recipe-agent
 ```
+
+`PHOENIX_ENDPOINT`를 설정하면 CLI 시작 시 Phoenix OTLP endpoint로 LangChain/OpenInference trace를 전송합니다. 로컬 Phoenix 기본 HTTP traces endpoint는 `http://localhost:6006/v1/traces`입니다.
 
 `SUPERVISOR`는 DeepAgent supervisor가 쓰는 모델이고, `TOOL`은 앞으로 tool 내부에서 LLM을 호출할 때 쓸 모델입니다. 코드에서는 `build_model("SUPERVISOR")`, `build_model("TOOL")`처럼 역할 이름으로 가져옵니다.
 
@@ -77,11 +83,11 @@ uv run python main.py
 
 `src/recipe_agent/streaming.py`의 `stream_answer()`에서 아래처럼 분리합니다.
 
-- `message.reasoning` → stderr에 `[thinking]`으로 출력
+- `message.reasoning` → stderr에 `[thinking]`으로 노란색 계열 출력
 - `message.text` → stdout에 `[answer]`로 출력
-- `stream.tool_calls` → stderr에 tool 실행 로그 출력
+- `stream.tool_calls` → stderr에 tool 실행 로그를 시작/진행/성공/오류 상태별 색상으로 출력
 
-주의: OpenRouter는 streaming reasoning을 `delta.reasoning` 또는 `delta.reasoning_details`로 보낼 수 있습니다. `src/recipe_agent/model.py`의 `ReasoningChatOpenAI` wrapper가 이 값을 LangChain v3의 `message.reasoning` projection으로 변환합니다.
+주의: GLM-4.7 같은 OpenAI-compatible 모델은 streaming reasoning을 `delta.reasoning`으로 보낼 수 있습니다. `src/recipe_agent/model.py`의 `ReasoningChatOpenAI` wrapper가 이 값을 `AIMessageChunk.additional_kwargs["reasoning"]`에 보존해 LangChain v3의 `message.reasoning` projection으로 출력되게 합니다.
 
 ## 5. 코드 구조
 
@@ -89,6 +95,7 @@ uv run python main.py
 - `src/recipe_agent/agent.py`: `create_recipe_agent()`
 - `src/recipe_agent/cli.py`: argv 처리와 대화형 loop
 - `src/recipe_agent/model.py`: env 기반 모델 생성, OpenRouter reasoning chunk 보정
+- `src/recipe_agent/observability.py`: `PHOENIX_ENDPOINT` 기반 Phoenix/OpenInference tracing 설정
 - `src/recipe_agent/prompts.py`: supervisor/subagent prompt
 - `src/recipe_agent/streaming.py`: v3 stream 출력
 - `src/recipe_agent/tools/`: ClickHouse, glossary tool

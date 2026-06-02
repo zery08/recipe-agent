@@ -7,6 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 from langchain_core._api import LangChainBetaWarning
 from langchain_core.messages import AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk
 from langchain_openai import ChatOpenAI
 
 load_dotenv()
@@ -34,79 +35,39 @@ def _get(prefix: str, key: str) -> str:
     return _DEFAULTS[key]
 
 
-def _extract_text_from_reasoning_details(details: Any) -> str:
-    if not isinstance(details, list):
-        return ""
-
-    parts: list[str] = []
-    for detail in details:
-        if not isinstance(detail, dict):
-            continue
-        for key in ("text", "summary", "reasoning", "content"):
-            value = detail.get(key)
-            if isinstance(value, str) and value:
-                parts.append(value)
-                break
-    return "".join(parts)
-
-
-def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
-    choices = raw_chunk.get("choices") or raw_chunk.get("chunk", {}).get("choices") or []
-    parts: list[str] = []
-
-    for choice in choices:
-        if not isinstance(choice, dict):
-            continue
-
-        delta = choice.get("delta") or choice.get("message") or {}
-        if not isinstance(delta, dict):
-            continue
-
-        direct_parts: list[str] = []
-        for key in ("reasoning_content", "reasoning", "thinking"):
-            value = delta.get(key)
-            if isinstance(value, str) and value:
-                direct_parts.append(value)
-            elif isinstance(value, dict):
-                direct_parts.append(_extract_text_from_reasoning_details([value]))
-
-        direct_text = "".join(direct_parts)
-        details_text = _extract_text_from_reasoning_details(delta.get("reasoning_details"))
-
-        if direct_text:
-            parts.append(direct_text)
-            if details_text and details_text != direct_text:
-                parts.append(details_text)
-        else:
-            parts.append(details_text)
-
-    return "".join(parts)
-
-
 class ReasoningChatOpenAI(ChatOpenAI):
-    """ChatOpenAI variant that preserves OpenRouter-style reasoning chunks."""
+    """
+    GLM-4.7 등 delta['reasoning'] 필드를 반환하는 OpenAI-compatible 모델용 ChatOpenAI wrapper.
+
+    LangChain ChatOpenAI가 기본적으로 보존하지 않는 reasoning chunk를
+    AIMessageChunk.additional_kwargs['reasoning']에 넣어준다.
+    """
 
     def _convert_chunk_to_generation_chunk(
         self,
-        chunk: dict[str, Any],
+        chunk: dict,
         default_chunk_class: type,
         base_generation_info: dict | None,
-    ):
-        generation_chunk = super()._convert_chunk_to_generation_chunk(
+    ) -> ChatGenerationChunk | None:
+        gen = super()._convert_chunk_to_generation_chunk(
             chunk,
             default_chunk_class,
             base_generation_info,
         )
-        if generation_chunk is None:
+
+        if gen is None:
             return None
 
-        message = generation_chunk.message
-        reasoning = _extract_reasoning_delta(chunk)
-        if reasoning and isinstance(message, AIMessageChunk):
-            message.additional_kwargs["reasoning_content"] = reasoning
-            message.response_metadata.pop("model_provider", None)
+        choices = chunk.get("choices") or chunk.get("chunk", {}).get("choices") or []
 
-        return generation_chunk
+        if choices:
+            delta = choices[0].get("delta") or {}
+            reasoning = delta.get("reasoning") or ""
+
+            if reasoning and isinstance(gen.message, AIMessageChunk):
+                gen.message.additional_kwargs["reasoning"] = reasoning
+
+        return gen
 
 
 def build_model(prefix: str = "SUPERVISOR", **overrides: Any) -> ChatOpenAI:

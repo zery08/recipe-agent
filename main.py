@@ -7,7 +7,7 @@ _SRC_DIR = Path(__file__).resolve().parent / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from recipe_agent.cli import main
+from recipe_agent.main import main
 
 
 if __name__ == "__main__":

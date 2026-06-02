@@ -81,7 +81,7 @@ uv run python main.py
 
 ## 4. reasoning 분리
 
-`src/recipe_agent/cli.py`의 `stream_answer()`에서 아래처럼 분리합니다.
+`src/recipe_agent/main.py`의 `stream_answer()`에서 아래처럼 분리합니다.
 
 - `message.reasoning` → console에 `[thinking]`으로 노란색 계열 출력
 - `message.text` → console에 `[answer]`로 출력
@@ -93,7 +93,8 @@ uv run python main.py
 
 - `main.py`: 로컬 실행용 얇은 entrypoint
 - `src/recipe_agent/agent.py`: `create_recipe_agent()`
-- `src/recipe_agent/cli.py`: argv 처리, 대화형 loop, v3 stream 출력
+- `src/recipe_agent/main.py`: argv 처리, 대화형 loop, v3 stream 출력
+- `src/recipe_agent/cli.py`: `recipe_agent.main` 호환 wrapper
 - `src/recipe_agent/model.py`: env 기반 모델 생성, OpenRouter reasoning chunk 보정
 - `src/recipe_agent/observability.py`: `PHOENIX_ENDPOINT` 기반 Phoenix/OpenInference tracing 설정
 - `src/recipe_agent/prompts.py`: supervisor/subagent prompt

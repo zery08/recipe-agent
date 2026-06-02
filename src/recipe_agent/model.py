@@ -35,64 +35,7 @@ def _get(prefix: str, key: str) -> str:
     return _DEFAULTS[key]
 
 
-def _extract_reasoning_details_text(reasoning_details: Any) -> str:
-    """Extract concatenable text from OpenRouter/GLM reasoning_details payloads."""
-
-    if isinstance(reasoning_details, str):
-        return reasoning_details
-
-    if isinstance(reasoning_details, list):
-        return "".join(
-            _extract_reasoning_details_text(item) for item in reasoning_details
-        )
-
-    if not isinstance(reasoning_details, dict):
-        return ""
-
-    text_parts: list[str] = []
-    for key in ("reasoning_content", "reasoning", "text", "content", "summary"):
-        value = reasoning_details.get(key)
-        if isinstance(value, str):
-            text_parts.append(value)
-        elif isinstance(value, list):
-            text_parts.append(_extract_reasoning_details_text(value))
-
-    return "".join(text_parts)
-
-
-def _get_reasoning_content(delta: dict[str, Any]) -> str:
-    """Return textual reasoning from known OpenAI-compatible streaming delta fields."""
-
-    reasoning_parts: list[str] = []
-    for key in ("reasoning_content", "reasoning"):
-        value = delta.get(key)
-        if isinstance(value, str):
-            reasoning_parts.append(value)
-
-    reasoning_details = delta.get("reasoning_details")
-    details_text = _extract_reasoning_details_text(reasoning_details)
-    if details_text:
-        reasoning_parts.append(details_text)
-
-    return "".join(reasoning_parts)
-
-
-def _append_reasoning_content(message: AIMessageChunk, reasoning_content: str) -> None:
-    existing = message.additional_kwargs.get("reasoning_content")
-    if isinstance(existing, str):
-        message.additional_kwargs["reasoning_content"] = existing + reasoning_content
-    else:
-        message.additional_kwargs["reasoning_content"] = reasoning_content
-
-
 class ReasoningChatOpenAI(ChatOpenAI):
-    """
-    GLM-4.7 등 reasoning 필드를 반환하는 OpenAI-compatible 모델용 ChatOpenAI wrapper.
-
-    LangChain ChatOpenAI가 기본적으로 보존하지 않는 reasoning chunk를
-    AIMessageChunk.additional_kwargs['reasoning_content']에 넣어준다.
-    """
-
     def _convert_chunk_to_generation_chunk(
         self,
         chunk: dict,
@@ -109,13 +52,26 @@ class ReasoningChatOpenAI(ChatOpenAI):
             return None
 
         choices = chunk.get("choices") or chunk.get("chunk", {}).get("choices") or []
+        if not choices:
+            return gen
 
-        if choices:
-            delta = choices[0].get("delta") or {}
-            reasoning_content = _get_reasoning_content(delta)
+        delta = choices[0].get("delta") or {}
 
-            if reasoning_content and isinstance(gen.message, AIMessageChunk):
-                _append_reasoning_content(gen.message, reasoning_content)
+        reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
+
+        if reasoning and isinstance(gen.message, AIMessageChunk):
+            # 이게 핵심.
+            # additional_kwargs가 아니라 content block으로 넣어야
+            # stream_events v3의 item.reasoning projection에 잡힌다.
+            gen.message.content = [
+                {
+                    "type": "reasoning",
+                    "reasoning": reasoning,
+                }
+            ]
+
+            # 필요하면 디버깅/후처리용으로도 보존
+            gen.message.additional_kwargs["reasoning"] = reasoning
 
         return gen
 

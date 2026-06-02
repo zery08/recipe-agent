@@ -87,7 +87,7 @@ uv run python main.py
 - `message.text` → stdout에 `[answer]`로 출력
 - `stream.tool_calls` → stderr에 tool 실행 로그를 시작/진행/성공/오류 상태별 색상으로 출력
 
-주의: GLM-4.7 같은 OpenAI-compatible 모델은 streaming reasoning을 `delta.reasoning` 또는 `delta.reasoning_content`로 보낼 수 있습니다. `src/recipe_agent/model.py`의 `ReasoningChatOpenAI` wrapper가 이 값과 문자열로 합칠 수 있는 `reasoning_details` 텍스트를 `AIMessageChunk.additional_kwargs["reasoning_content"]`에 보존해 LangChain v3의 `message.reasoning` projection으로 출력되게 합니다.
+주의: OpenRouter는 streaming reasoning을 `delta.reasoning` 또는 `delta.reasoning_details`로 보낼 수 있습니다. `src/recipe_agent/model.py`의 `ReasoningChatOpenAI` wrapper가 이 값을 LangChain v3의 `message.reasoning` projection으로 변환합니다.
 
 ## 5. 코드 구조
 

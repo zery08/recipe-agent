@@ -22,6 +22,7 @@ def setup_observability() -> None:
     tracer_provider = register(
         endpoint=endpoint,
         project_name=os.environ.get("PHOENIX_PROJECT_NAME", _PROJECT_NAME),
+        protocol="grpc",
         auto_instrument=False,
     )
     LangChainInstrumentor().instrument(tracer_provider=tracer_provider)

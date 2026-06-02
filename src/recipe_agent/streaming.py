@@ -14,8 +14,6 @@ _TOOL_ERROR_STYLE = "bold red"
 def _safe_iter_projection(projection) -> Iterable[str]:
     if projection is None:
         return []
-    if isinstance(projection, str):
-        return [projection]
     return projection
 
 

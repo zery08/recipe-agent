@@ -18,6 +18,15 @@ from recipe_agent.tools.glossary import (
 
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
+_DISABLED_SQL_TOOL_NAMES = {"sql_db_query_checker"}
+
+
+def _filter_clickhouse_tools(tools):
+    return [
+        tool
+        for tool in tools
+        if getattr(tool, "name", None) not in _DISABLED_SQL_TOOL_NAMES
+    ]
 
 
 def _build_supervisor_tools(clickhouse_tools):
@@ -39,9 +48,11 @@ def create_recipe_agent():
     clickhouse_tools = []
     clickhouse_uri = os.environ.get("CLICKHOUSE_URI")
     if clickhouse_uri:
-        clickhouse_tools = build_clickhouse_tool(
-            db_uri=clickhouse_uri,
-            model=tool_model,
+        clickhouse_tools = _filter_clickhouse_tools(
+            build_clickhouse_tool(
+                db_uri=clickhouse_uri,
+                model=tool_model,
+            )
         )
 
     return create_deep_agent(

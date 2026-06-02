@@ -64,7 +64,7 @@ def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
             continue
 
         direct_parts: list[str] = []
-        for key in ("reasoning_content", "reasoning", "thinking"):
+        for key in ("reasoning", "thinking"):
             value = delta.get(key)
             if isinstance(value, str) and value:
                 direct_parts.append(value)
@@ -107,6 +107,7 @@ class ReasoningChatOpenAI(ChatOpenAI):
             message.content = [{"type": "reasoning", "reasoning": reasoning}]
             message.additional_kwargs["reasoning"] = reasoning
             message.additional_kwargs["reasoning_content"] = reasoning
+            message.response_metadata.pop("model_provider", None)
 
         return generation_chunk
 

@@ -10,6 +10,9 @@ from rich.text import Text
 from recipe_agent.otel import phoenix_session, setup_otel
 
 console = Console()
+_MAX_HISTORY_MESSAGES = 12
+
+ChatMessage = dict[str, str]
 
 
 def _safe_iter_projection(projection) -> Iterable[str]:
@@ -50,11 +53,26 @@ def _event_delta(event: object, *keys: str) -> str:
     return ""
 
 
-def stream_answer(agent, question: str, *, session_id: str | None = None) -> None:
-    payload = {"messages": [{"role": "user", "content": question}]}
+def _trim_history(history: list[ChatMessage]) -> list[ChatMessage]:
+    return history[-_MAX_HISTORY_MESSAGES:]
+
+
+def stream_answer(
+    agent,
+    question: str,
+    *,
+    session_id: str | None = None,
+    history: list[ChatMessage] | None = None,
+) -> str:
+    messages = [
+        *_trim_history(history or []),
+        {"role": "user", "content": question},
+    ]
+    payload = {"messages": messages}
 
     printed_thinking = False
     printed_answer = False
+    answer_chunks: list[str] = []
 
     with phoenix_session(session_id):
         stream = agent.stream_events(payload, version="v3")
@@ -75,6 +93,7 @@ def stream_answer(agent, question: str, *, session_id: str | None = None) -> Non
                         if not printed_answer:
                             _print_chunk(console, "\n[answer] ")
                             printed_answer = True
+                        answer_chunks.append(text)
                         _print_chunk(console, text)
 
             elif name == "tool_calls":
@@ -94,6 +113,7 @@ def stream_answer(agent, question: str, *, session_id: str | None = None) -> Non
                     console.print(Text(f"\n[tool:done] {item.output}", style="cyan"))
 
     console.print()
+    return "".join(answer_chunks).strip()
 
 
 def main() -> None:
@@ -110,6 +130,7 @@ def main() -> None:
         return
 
     console.print("Recipe Agent CLI. Type 'exit' to quit.", style="bold")
+    history: list[ChatMessage] = []
     while True:
         try:
             question = console.input("\n[bold cyan]> [/]").strip()
@@ -123,4 +144,13 @@ def main() -> None:
         if not question:
             continue
 
-        stream_answer(agent, question, session_id=session_id)
+        answer = stream_answer(
+            agent,
+            question,
+            session_id=session_id,
+            history=history,
+        )
+        history.append({"role": "user", "content": question})
+        if answer:
+            history.append({"role": "assistant", "content": answer})
+        history = _trim_history(history)

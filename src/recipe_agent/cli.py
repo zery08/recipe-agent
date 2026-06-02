@@ -2,24 +2,32 @@ from __future__ import annotations
 
 import sys
 
-from recipe_agent.agent import create_recipe_agent
+from rich.console import Console
+
+from recipe_agent.observability import setup_observability
 from recipe_agent.streaming import stream_answer
 
 
 def main() -> None:
+    setup_observability()
+
+    from recipe_agent.agent import create_recipe_agent
+
+    console = Console()
+    error_console = Console(stderr=True)
     agent = create_recipe_agent()
 
     if len(sys.argv) > 1:
         question = " ".join(sys.argv[1:])
-        stream_answer(agent, question)
+        stream_answer(agent, question, console=console, error_console=error_console)
         return
 
-    print("Recipe Agent CLI. Type 'exit' to quit.")
+    console.print("Recipe Agent CLI. Type 'exit' to quit.")
     while True:
         try:
-            question = input("\n> ").strip()
+            question = console.input("\n[bold cyan]>[/] ").strip()
         except (EOFError, KeyboardInterrupt):
-            print()
+            console.print()
             return
 
         if question.lower() in {"exit", "quit", "q"}:
@@ -28,4 +36,4 @@ def main() -> None:
         if not question:
             continue
 
-        stream_answer(agent, question)
+        stream_answer(agent, question, console=console, error_console=error_console)

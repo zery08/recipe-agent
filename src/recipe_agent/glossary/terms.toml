@@ -1,0 +1,64 @@
+[terms.CD_IH]
+definition = "Inner hole critical dimension measurement stored as a value in profile.item."
+aliases = ["inner CD", "IH CD", "CD IH"]
+category = "profile_item"
+
+[terms.CD_OH]
+definition = "Outer hole critical dimension measurement stored as a value in profile.item."
+aliases = ["outer CD", "OH CD", "CD OH"]
+category = "profile_item"
+
+[terms.root_lot_wafer_id]
+definition = "Wafer-level join key between incoming and profile."
+aliases = ["wafer key", "root lot wafer id"]
+category = "schema_key"
+
+[terms.root_lot_id]
+definition = "Root lot identifier shared by incoming and profile."
+aliases = ["root lot"]
+category = "schema_key"
+
+[terms.track_out_time]
+definition = "Timestamp when a wafer completed the process and tracked out."
+aliases = ["trackout", "track out", "track-out time"]
+category = "incoming_column"
+
+[terms.ppid]
+definition = "Process program identifier used by the equipment."
+aliases = ["PPID", "process program id"]
+category = "incoming_column"
+
+[terms.eqp_id]
+definition = "Equipment identifier."
+aliases = ["equipment id", "equipment"]
+category = "incoming_column"
+
+[terms.recipe_id]
+definition = "Recipe identifier used to join incoming wafer metadata with recipe parameters."
+aliases = ["recipe"]
+category = "schema_key"
+
+[terms.step_no]
+definition = "Recipe step number."
+aliases = ["step number"]
+category = "recipe_column"
+
+[terms.step_name]
+definition = "Recipe step name."
+aliases = ["step"]
+category = "recipe_column"
+
+[terms.param_key]
+definition = "Recipe parameter name stored in long-form recipe rows."
+aliases = ["parameter", "param"]
+category = "recipe_column"
+
+[terms.wl]
+definition = "Wordline index for profile measurement data."
+aliases = ["wordline", "word line"]
+category = "measurement_axis"
+
+[terms.wf_loc]
+definition = "Wafer location for profile measurement data, such as CENTER, EDGE_N, or EDGE_S."
+aliases = ["wafer location", "location"]
+category = "measurement_axis"

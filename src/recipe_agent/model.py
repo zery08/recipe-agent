@@ -35,45 +35,80 @@ def _get(prefix: str, key: str) -> str:
     return _DEFAULTS[key]
 
 
+def _extract_text_from_reasoning_details(details: Any) -> str:
+    if not isinstance(details, list):
+        return ""
+
+    parts: list[str] = []
+    for detail in details:
+        if not isinstance(detail, dict):
+            continue
+        for key in ("text", "summary", "reasoning", "content"):
+            value = detail.get(key)
+            if isinstance(value, str) and value:
+                parts.append(value)
+                break
+    return "".join(parts)
+
+
+def _extract_reasoning_delta(raw_chunk: dict[str, Any]) -> str:
+    choices = raw_chunk.get("choices") or raw_chunk.get("chunk", {}).get("choices") or []
+    parts: list[str] = []
+
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+
+        delta = choice.get("delta") or choice.get("message") or {}
+        if not isinstance(delta, dict):
+            continue
+
+        direct_parts: list[str] = []
+        for key in ("reasoning_content", "reasoning", "thinking"):
+            value = delta.get(key)
+            if isinstance(value, str) and value:
+                direct_parts.append(value)
+            elif isinstance(value, dict):
+                direct_parts.append(_extract_text_from_reasoning_details([value]))
+
+        direct_text = "".join(direct_parts)
+        details_text = _extract_text_from_reasoning_details(delta.get("reasoning_details"))
+
+        if direct_text:
+            parts.append(direct_text)
+            if details_text and details_text != direct_text:
+                parts.append(details_text)
+        else:
+            parts.append(details_text)
+
+    return "".join(parts)
+
+
 class ReasoningChatOpenAI(ChatOpenAI):
+    """ChatOpenAI variant that preserves OpenRouter-style reasoning chunks."""
+
     def _convert_chunk_to_generation_chunk(
         self,
         chunk: dict,
         default_chunk_class: type,
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
-        gen = super()._convert_chunk_to_generation_chunk(
+        generation_chunk = super()._convert_chunk_to_generation_chunk(
             chunk,
             default_chunk_class,
             base_generation_info,
         )
-
-        if gen is None:
+        if generation_chunk is None:
             return None
 
-        choices = chunk.get("choices") or chunk.get("chunk", {}).get("choices") or []
-        if not choices:
-            return gen
+        reasoning = _extract_reasoning_delta(chunk)
+        message = generation_chunk.message
+        if reasoning and isinstance(message, AIMessageChunk):
+            message.content = [{"type": "reasoning", "reasoning": reasoning}]
+            message.additional_kwargs["reasoning"] = reasoning
+            message.additional_kwargs["reasoning_content"] = reasoning
 
-        delta = choices[0].get("delta") or {}
-
-        reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
-
-        if reasoning and isinstance(gen.message, AIMessageChunk):
-            # 이게 핵심.
-            # additional_kwargs가 아니라 content block으로 넣어야
-            # stream_events v3의 item.reasoning projection에 잡힌다.
-            gen.message.content = [
-                {
-                    "type": "reasoning",
-                    "reasoning": reasoning,
-                }
-            ]
-
-            # 필요하면 디버깅/후처리용으로도 보존
-            gen.message.additional_kwargs["reasoning"] = reasoning
-
-        return gen
+        return generation_chunk
 
 
 def build_model(prefix: str = "SUPERVISOR", **overrides: Any) -> ChatOpenAI:
@@ -88,7 +123,6 @@ def build_model(prefix: str = "SUPERVISOR", **overrides: Any) -> ChatOpenAI:
     model_kwargs.update(overrides)
 
     if "openrouter.ai" in base_url:
-        # OpenRouter-specific extension, not an OpenAI Chat Completions field.
         extra_body = dict(model_kwargs.get("extra_body") or {})
         reasoning = extra_body.get("reasoning")
         reasoning = dict(reasoning) if isinstance(reasoning, dict) else {}

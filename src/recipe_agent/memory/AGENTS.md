@@ -9,10 +9,7 @@
 - For deep query tasks, separate recipe parameters from profile measurement outcomes.
 - Use `deep_query` for multi-step investigations such as comparing recipes or finding good measurement conditions.
 - State assumptions and data gaps when schema, metric definitions, or sample size are unclear.
-- Test schema join key is `root_lot_wafer_id` between `incoming` and `profile`.
-- `incoming` has wafer-level metadata: `root_lot_wafer_id`, `root_lot_id`, `wafer_id`, `track_out_time`, `recipe_id`, `eqp_id`, `ppid`.
-- `recipe` has recipe parameters: `recipe_id`, `step_no`, `step_name`, `param_key`, `value`, `unit`.
-- `profile` has measurements: `root_lot_wafer_id`, `root_lot_id`, `wl`, `wf_loc`, `item`, `value`, `unit`, `measured_at`.
+- Use the ClickHouse prompt context in `tools/clickhouse/context.py` as the canonical source for table columns, joins, and schema notes.
 - Do not guess schema, joins, or metric meanings.
 - Ask a short clarification only when ambiguity blocks a correct query; otherwise state the assumption and continue.
 - Keep SQL and analysis scoped to the user's request.

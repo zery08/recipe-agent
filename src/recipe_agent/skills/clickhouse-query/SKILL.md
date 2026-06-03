@@ -19,9 +19,5 @@ Do not add extra joins, filters, columns, or analysis unless they are needed for
 If ambiguity blocks a correct query, ask one short clarification question; otherwise state the assumption and continue.
 If a query returns empty or surprising results, check whether filters or joins caused it before summarizing.
 
-Test schema:
-- `incoming(root_lot_wafer_id, root_lot_id, wafer_id, track_out_time, recipe_id, eqp_id, ppid)`
-- `recipe(recipe_id, step_no, step_name, param_key, value, unit)`
-- `profile(root_lot_wafer_id, root_lot_id, wl, wf_loc, item, value, unit, measured_at)`
-
-Use `root_lot_wafer_id` to join `incoming` and `profile`; use `recipe_id` to join `incoming` and `recipe`.
+Known schema details are injected into system prompts from `tools/clickhouse/context.py`.
+Treat that file as the canonical source for table columns, join keys, and schema notes.

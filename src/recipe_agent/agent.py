@@ -20,17 +20,7 @@ from recipe_agent.tools.glossary import (
     lookup_domain_term,
 )
 
-
 _PACKAGE_DIR = Path(__file__).resolve().parent
-
-
-def _build_supervisor_tools(clickhouse_tools):
-    return [
-        *clickhouse_tools,
-        lookup_domain_term,
-        list_domain_terms,
-    ]
-
 
 def create_recipe_agent():
     """Create the recipe analytics DeepAgent supervisor."""
@@ -40,17 +30,17 @@ def create_recipe_agent():
     supervisor_model = build_model("SUPERVISOR", temperature=0.0, streaming=True)
     tool_model = build_model("TOOL", temperature=0.0, streaming=True)
 
-    clickhouse_tools = []
-    if os.environ.get("CLICKHOUSE_URI"):
-        clickhouse_tools = [
-            clickhouse_query,
-            clickhouse_list_tables,
-            clickhouse_describe_table,
-        ]
+    tools = [ 
+                clickhouse_query,
+                clickhouse_list_tables,
+                clickhouse_describe_table,
+                lookup_domain_term,
+                list_domain_terms
+    ]
 
     return create_deep_agent(
         model=supervisor_model,
-        tools=_build_supervisor_tools(clickhouse_tools),
+        tools=tools,
         system_prompt=SUPERVISOR_PROMPT,
         subagents=[
             create_deep_query_subagent(

@@ -55,7 +55,7 @@ CLICKHOUSE_URI=sqlite:///data/recipe_agent_test.db
 
 `SUPERVISOR`는 DeepAgent supervisor가 쓰는 모델이고, `TOOL`은 tool/subagent 내부에서 LLM을 호출할 때 쓸 모델입니다.
 
-`CLICKHOUSE_URI`를 설정하면 [clickhouse.py](src/recipe_agent/tools/clickhouse.py)가 LangChain `SQLDatabaseToolkit` tools를 생성합니다. 로컬 테스트는 SQLite DB를 쓰고, 실제 ClickHouse는 `clickhousedb://default:password@localhost:8123/default` 같은 URI를 쓰면 됩니다.
+`CLICKHOUSE_URI`를 설정하면 [clickhouse query tools](src/recipe_agent/tools/clickhouse/query.py)가 read-only ClickHouse tools를 제공합니다. 로컬 테스트는 SQLite DB를 쓰고, 실제 ClickHouse는 `clickhousedb://default:password@localhost:8123/default` 같은 URI를 쓰면 됩니다.
 
 OpenRouter reasoning은 `SUPERVISOR_BASE_URL`에 `openrouter.ai`가 들어 있으면 기본으로 `extra_body={"reasoning": {"enabled": true}}`를 보냅니다.
 
@@ -100,9 +100,11 @@ OpenRouter는 streaming reasoning을 `delta.reasoning` 또는 `delta.reasoning_d
 - `src/recipe_agent/cli.py`: argv 처리, 대화형 loop, v3 stream 출력
 - `src/recipe_agent/model.py`: env 기반 모델 생성, OpenRouter reasoning chunk 보정
 - `src/recipe_agent/otel.py`: Phoenix/OpenTelemetry tracing 초기화
-- `src/recipe_agent/prompts.py`: supervisor/subagent prompt와 known schema context
-- `src/recipe_agent/tools/`: SQL toolkit, glossary tool
-- `src/recipe_agent/subagents/`: `deep_query` subagent spec
+- `src/recipe_agent/prompts.py`: supervisor prompt와 shared operating rules
+- `src/recipe_agent/tools/clickhouse/context.py`: ClickHouse schema/policy prompt context의 canonical source
+- `src/recipe_agent/tools/clickhouse/query.py`: read-only ClickHouse query tools
+- `src/recipe_agent/tools/`: ClickHouse, glossary tool
+- `src/recipe_agent/subagents/deep_query.py`: `deep_query` subagent spec와 prompt
 - `src/recipe_agent/skills/*/SKILL.md`: 작업별 progressive-disclosure skill
 - `src/recipe_agent/memory/AGENTS.md`: 항상 적용되는 agent memory
 - `data/recipe_agent_test.db`: 로컬 테스트 SQLite DB

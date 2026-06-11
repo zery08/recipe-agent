@@ -57,6 +57,74 @@ def _trim_history(history: list[ChatMessage]) -> list[ChatMessage]:
     return history[-_MAX_HISTORY_MESSAGES:]
 
 
+_SUBAGENT_TOOL_NAME = "task"
+
+
+def _stream_message_item(
+    item,
+    state: dict[str, bool],
+    *,
+    prefix: str = "",
+    text_style: str | None = None,
+    answer_chunks: list[str] | None = None,
+) -> None:
+    for event in item:
+        thinking = _event_delta(event, "reasoning", "reasoning_content")
+        text = _event_delta(event, "text", "content")
+
+        if thinking:
+            if not state["thinking"]:
+                _print_chunk(console, f"\n{prefix}[thinking] ", style="dim")
+                state["thinking"] = True
+            _print_chunk(console, thinking, style="dim")
+
+        if text:
+            if not state["answer"]:
+                _print_chunk(console, f"\n{prefix}[answer] ", style=text_style)
+                state["answer"] = True
+            if answer_chunks is not None:
+                answer_chunks.append(text)
+            _print_chunk(console, text, style=text_style)
+
+
+def _stream_tool_call(item, *, style: str = "cyan") -> None:
+    console.print(
+        Text(
+            f"\n[tool:start] {item.tool_name} input={item.input}",
+            style=style,
+        )
+    )
+
+    for delta in _safe_iter_projection(getattr(item, "output_deltas", None)):
+        _print_chunk(console, str(delta), style=style)
+
+    if getattr(item, "error", None):
+        console.print(Text(f"\n[tool:error] {item.error}", style="red"))
+    else:
+        console.print(Text(f"\n[tool:done] {item.output}", style=style))
+
+
+def _stream_subagent(handle, label: str) -> None:
+    """Stream a subagent's messages and tool calls live from its subgraph handle.
+
+    Iterating the handle's projections drives the shared root pump, so
+    tokens print as the subagent produces them.
+    """
+    prefix = f"[{label}] "
+    state = {"thinking": False, "answer": False}
+
+    for name, item in handle.interleave("messages", "tool_calls"):
+        if name == "messages":
+            _stream_message_item(item, state, prefix=prefix, text_style="green")
+        elif name == "tool_calls":
+            _stream_tool_call(item, style="green")
+
+    if getattr(handle, "error", None):
+        console.print(Text(f"\n{prefix}failed: {handle.error}", style="red"))
+    else:
+        console.print(Text(f"\n{prefix}{handle.status}", style="green"))
+
+
 def stream_answer(
     agent,
     question: str,
@@ -70,47 +138,44 @@ def stream_answer(
     ]
     payload = {"messages": messages}
 
-    printed_thinking = False
-    printed_answer = False
+    state = {"thinking": False, "answer": False}
     answer_chunks: list[str] = []
+    pending_subagents: list[str] = []
 
     with phoenix_session(session_id):
         stream = agent.stream_events(payload, version="v3")
 
-        for name, item in stream.interleave("messages", "tool_calls"):
+        for name, item in stream.interleave("messages", "tool_calls", "subgraphs"):
             if name == "messages":
-                for event in item:
-                    thinking = _event_delta(event, "reasoning", "reasoning_content")
-                    text = _event_delta(event, "text", "content")
-
-                    if thinking:
-                        if not printed_thinking:
-                            _print_chunk(console, "\n[thinking] ", style="dim")
-                            printed_thinking = True
-                        _print_chunk(console, thinking, style="dim")
-
-                    if text:
-                        if not printed_answer:
-                            _print_chunk(console, "\n[answer] ")
-                            printed_answer = True
-                        answer_chunks.append(text)
-                        _print_chunk(console, text)
+                _stream_message_item(item, state, answer_chunks=answer_chunks)
 
             elif name == "tool_calls":
-                console.print(
-                    Text(
-                        f"\n[tool:start] {item.tool_name} input={item.input}",
-                        style="cyan",
+                if item.tool_name == _SUBAGENT_TOOL_NAME:
+                    # The subagent runs as a nested subgraph; its tokens
+                    # arrive via the matching "subgraphs" handle. Draining
+                    # output_deltas here would pump the whole subagent run
+                    # to completion before the handle is consumed.
+                    subagent_type = (item.input or {}).get(
+                        "subagent_type", "subagent"
                     )
-                )
-
-                for delta in _safe_iter_projection(getattr(item, "output_deltas", None)):
-                    _print_chunk(console, str(delta), style="cyan")
-
-                if getattr(item, "error", None):
-                    console.print(Text(f"\n[tool:error] {item.error}", style="red"))
+                    pending_subagents.append(subagent_type)
+                    console.print(
+                        Text(
+                            f"\n[subagent:start] {subagent_type} "
+                            f"input={item.input}",
+                            style="green",
+                        )
+                    )
                 else:
-                    console.print(Text(f"\n[tool:done] {item.output}", style="cyan"))
+                    _stream_tool_call(item)
+
+            elif name == "subgraphs":
+                label = (
+                    pending_subagents.pop(0)
+                    if pending_subagents
+                    else (item.graph_name or "subagent")
+                )
+                _stream_subagent(item, label)
 
     console.print()
     return "".join(answer_chunks).strip()
